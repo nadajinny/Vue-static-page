@@ -525,7 +525,7 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow: hidden;
   background: radial-gradient(ellipse at top, #243b55, #141e30);
-  height: calc(100vh - 120px); /* ✅ 헤더 높이만큼 빼기 */
+  height: calc(100vh - 120px);
 }
 
 .moon {
