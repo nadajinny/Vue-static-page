@@ -60,18 +60,23 @@ type Lantern = {
   id: number;
   x: number;
   y: number;
-  r: number;            // radius
+  r: number;
   vx: number;
   vy: number;
   rot: number;
   rotSpeed: number;
-  hue: number;          // base color
-  glow: number;         // 0..1
+  hue: number;
+  glow: number;
   caught?: boolean;
 };
 
 type Spark = {
-  x: number; y: number; vx: number; vy: number; life: number; maxLife: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
 };
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -97,7 +102,8 @@ const state = reactive({
 });
 
 let rafId = 0;
-let timerId: number | null = null;
+// ✅ 타입 안정화 (ReturnType<typeof setInterval>)
+let timerId: ReturnType<typeof setInterval> | null = null;
 
 const dpr = () => Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
@@ -116,7 +122,6 @@ function resizeCanvas() {
 }
 
 function startGame() {
-  // reset
   running.value = true;
   paused.value = false;
   finished.value = false;
@@ -131,9 +136,8 @@ function startGame() {
   state.spawnAcc = 0;
   state.lastTs = performance.now();
 
-  // timer
-  if (timerId) window.clearInterval(timerId);
-  timerId = window.setInterval(() => {
+  if (timerId) clearInterval(timerId);
+  timerId = setInterval(() => {
     if (!running.value || paused.value) return;
     timeLeft.value -= 1;
     if (timeLeft.value <= 0) {
@@ -149,7 +153,7 @@ function endGame() {
   running.value = false;
   finished.value = true;
   paused.value = false;
-  if (timerId !== null) window.clearInterval(timerId);
+  if (timerId) clearInterval(timerId);
 }
 
 function togglePause() {
@@ -170,7 +174,7 @@ function spawnLantern() {
   const vy = randRange(speedBase * 0.8, speedBase * 1.2);
   const vx = randRange(-40, 40);
   const rotSpeed = randRange(-2, 2);
-  const hue = randChoice([10, 28, 35, 45, 320, 200]); // warm lantern palette + accent
+  const hue = randChoice([10, 28, 35, 45, 320, 200])!;
   const glow = randRange(0.5, 1);
 
   state.lanterns.push({
@@ -188,44 +192,42 @@ function spawnLantern() {
 }
 
 function difficulty() {
-  // progresses with time and score (0..1)
   const t = 1 - Math.max(0, timeLeft.value) / 60;
   const s = Math.min(1, score.value / 600);
-  return clamp((t * 0.7 + s * 0.5), 0, 1);
+  return clamp(t * 0.7 + s * 0.5, 0, 1);
 }
 
 function loop(ts: number) {
   if (!running.value || paused.value) return;
   const canvas = canvasRef.value!;
   const ctx = canvas.getContext('2d')!;
-
   const ratio = dpr();
   const dt = Math.min(0.032, (ts - state.lastTs) / 1000 || 0);
   state.lastTs = ts;
 
-  // Clear with transparent (bg is CSS)
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, state.width, state.height);
 
-  // Spawn rate increases with difficulty
-  const baseSpawn = lerp(0.55, 0.22, difficulty()); // seconds
+  const baseSpawn = lerp(0.55, 0.22, difficulty());
   state.spawnAcc += dt;
   while (state.spawnAcc >= baseSpawn) {
     state.spawnAcc -= baseSpawn;
     spawnLantern();
   }
 
-  // Update & draw lanterns
-  for (const L of state.lanterns) {
+  // ✅ 안전한 lantern 업데이트
+  for (let i = 0; i < state.lanterns.length; i++) {
+    const L = state.lanterns[i];
+    if (!L) continue;
     L.x += L.vx * dt;
     L.y += L.vy * dt;
     L.rot += L.rotSpeed * dt;
   }
 
-  // Remove fallen lanterns
+  // ✅ 안전한 제거 로직
   for (let i = state.lanterns.length - 1; i >= 0; i--) {
     const L = state.lanterns[i];
-    if(!L) continue;
+    if (!L) continue;
     if (L.y - L.r > state.height + 8) {
       state.lanterns.splice(i, 1);
       combo.value = 0;
@@ -236,10 +238,12 @@ function loop(ts: number) {
     }
   }
 
-  // Draw order: glow -> shape -> tassel
-  for (const L of state.lanterns) drawLantern(ctx, L);
+  // ✅ 안전한 draw
+  for (const L of state.lanterns) {
+    if (!L) continue;
+    drawLantern(ctx, L);
+  }
 
-  // Sparks
   updateSparks(dt);
   drawSparks(ctx);
 
@@ -247,7 +251,6 @@ function loop(ts: number) {
 }
 
 function drawLantern(ctx: CanvasRenderingContext2D, L: Lantern) {
-  // Glow
   ctx.save();
   ctx.globalAlpha = 0.35 * L.glow;
   const grad = ctx.createRadialGradient(L.x, L.y, 2, L.x, L.y, L.r * 2.2);
@@ -263,7 +266,6 @@ function drawLantern(ctx: CanvasRenderingContext2D, L: Lantern) {
   ctx.translate(L.x, L.y);
   ctx.rotate(L.rot);
 
-  // Body (paper ribbed)
   const bodyGrad = ctx.createLinearGradient(0, -L.r, 0, L.r);
   bodyGrad.addColorStop(0, `hsl(${L.hue}, 90%, 80%)`);
   bodyGrad.addColorStop(1, `hsl(${L.hue}, 90%, 55%)`);
@@ -271,7 +273,6 @@ function drawLantern(ctx: CanvasRenderingContext2D, L: Lantern) {
   roundedRect(ctx, -L.r * 0.9, -L.r, L.r * 1.8, L.r * 2, L.r * 0.45);
   ctx.fill();
 
-  // Ribs
   ctx.strokeStyle = `hsla(${L.hue}, 70%, 35%, 0.35)`;
   ctx.lineWidth = Math.max(1, L.r * 0.08);
   for (let i = -3; i <= 3; i++) {
@@ -281,14 +282,12 @@ function drawLantern(ctx: CanvasRenderingContext2D, L: Lantern) {
     ctx.stroke();
   }
 
-  // Cap & base
   ctx.fillStyle = `hsl(${L.hue}, 60%, 35%)`;
   roundedRect(ctx, -L.r * 0.6, -L.r * 1.15, L.r * 1.2, L.r * 0.25, L.r * 0.08);
   ctx.fill();
   roundedRect(ctx, -L.r * 0.6, L.r * 0.9, L.r * 1.2, L.r * 0.25, L.r * 0.08);
   ctx.fill();
 
-  // Tassel (pendulum)
   ctx.strokeStyle = `hsl(${L.hue}, 70%, 30%)`;
   ctx.lineWidth = Math.max(1, L.r * 0.06);
   ctx.beginPath();
@@ -318,20 +317,18 @@ function onPointerDown(e: PointerEvent) {
   if (!running.value || paused.value) return;
   const pos = getPointerPos(e);
   let hit = false;
-  // nearest-first small optimization
   let bestIdx = -1;
   let bestD2 = Number.POSITIVE_INFINITY;
 
   for (let i = 0; i < state.lanterns.length; i++) {
     const L = state.lanterns[i];
+    if (!L) continue;
     const dx = pos.x - L.x;
     const dy = pos.y - L.y;
     const d2 = dx * dx + dy * dy;
-    if (d2 <= (L.r * 0.95) ** 2) {
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        bestIdx = i;
-      }
+    if (d2 <= (L.r * 0.95) ** 2 && d2 < bestD2) {
+      bestD2 = d2;
+      bestIdx = i;
     }
   }
 
@@ -349,22 +346,20 @@ function onPointerDown(e: PointerEvent) {
     }
   }
 
-  if (!hit) {
-    combo.value = 0;
-  }
+  if (!hit) combo.value = 0;
 }
 
-function onPointerMove(_: PointerEvent) { /* reserved for drag mechanics */ }
-function onPointerUp(_: PointerEvent) { /* noop */ }
+function onPointerMove(_: PointerEvent) {}
+function onPointerUp(_: PointerEvent) {}
 
 function popLantern(L: Lantern) {
-  // Create sparkles
   const k = 18;
   for (let i = 0; i < k; i++) {
     const a = (i / k) * Math.PI * 2 + Math.random() * 0.4;
     const s = randRange(90, 220);
     state.sparks.push({
-      x: L.x, y: L.y,
+      x: L.x,
+      y: L.y,
       vx: Math.cos(a) * s,
       vy: Math.sin(a) * s,
       life: 0,
@@ -374,14 +369,14 @@ function popLantern(L: Lantern) {
 }
 
 function updateSparks(dt: number) {
-  const g = 420; // gravity
+  const g = 420;
   for (const p of state.sparks) {
     p.life += dt;
     p.x += p.vx * dt;
     p.y += p.vy * dt + g * dt * dt * 0.5;
     p.vy += g * dt;
   }
-  state.sparks = state.sparks.filter(p => p.life < p.maxLife);
+  state.sparks = state.sparks.filter((p) => p.life < p.maxLife);
 }
 
 function drawSparks(ctx: CanvasRenderingContext2D) {
@@ -399,34 +394,37 @@ function drawSparks(ctx: CanvasRenderingContext2D) {
 
 function getPointerPos(e: PointerEvent) {
   const rect = canvasRef.value!.getBoundingClientRect();
-  return {
-    x: (e.clientX - rect.left),
-    y: (e.clientY - rect.top),
-  };
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
-// utils
-function randRange(min: number, max: number) { return min + Math.random() * (max - min); }
-function randChoice<T>(arr: T[]) { return arr[Math.floor(Math.random() * arr.length)]; }
-function clamp(v: number, a: number, b: number) { return Math.max(a, Math.min(b, v)); }
-function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
+function randRange(min: number, max: number) {
+  return min + Math.random() * (max - min);
+}
+function randChoice<T>(arr: T[]) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+function clamp(v: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, v));
+}
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
 
 onMounted(() => {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas, { passive: true });
-  // draw idle background
-  const now = performance.now();
-  state.lastTs = now;
+  state.lastTs = performance.now();
   const ctx = canvasRef.value!.getContext('2d')!;
   ctx.clearRect(0, 0, canvasRef.value!.width, canvasRef.value!.height);
 });
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(rafId);
-  if (timerId) window.clearInterval(timerId);
+  if (timerId) clearInterval(timerId);
   window.removeEventListener('resize', resizeCanvas);
 });
 </script>
+
 
 <style scoped>
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -527,7 +525,9 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow: hidden;
   background: radial-gradient(ellipse at top, #243b55, #141e30);
+  height: calc(100vh - 120px); /* ✅ 헤더 높이만큼 빼기 */
 }
+
 .moon {
   position: absolute;
   top: 8%;
