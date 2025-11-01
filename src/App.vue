@@ -30,7 +30,7 @@
               @pointerup="onPointerUp"></canvas>
 
       <div v-if="!running && !finished" class="overlay">
-        <p class="hint">🎑 연등을 클릭해서 잡아보세요 🎑</p>
+        <p class="hint">연등을 클릭해서 잡아보세요</p>
         <p class="hint-small">연속으로 잡으면 <strong>콤보 보너스!</strong></p>
       </div>
 
@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, reactive, computed } from 'vue';
+import { onMounted, onBeforeUnmount, ref, reactive } from 'vue';
 
 type Lantern = {
   id: number;
@@ -97,7 +97,7 @@ const state = reactive({
 });
 
 let rafId = 0;
-let timerId: number | undefined;
+let timerId: number | null = null;
 
 const dpr = () => Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
@@ -149,7 +149,7 @@ function endGame() {
   running.value = false;
   finished.value = true;
   paused.value = false;
-  if (timerId) window.clearInterval(timerId);
+  if (timerId !== null) window.clearInterval(timerId);
 }
 
 function togglePause() {
@@ -225,6 +225,7 @@ function loop(ts: number) {
   // Remove fallen lanterns
   for (let i = state.lanterns.length - 1; i >= 0; i--) {
     const L = state.lanterns[i];
+    if(!L) continue;
     if (L.y - L.r > state.height + 8) {
       state.lanterns.splice(i, 1);
       combo.value = 0;
@@ -337,13 +338,15 @@ function onPointerDown(e: PointerEvent) {
   if (bestIdx >= 0) {
     hit = true;
     const L = state.lanterns[bestIdx];
-    popLantern(L);
-    state.lanterns.splice(bestIdx, 1);
-    combo.value += 1;
-    maxCombo.value = Math.max(maxCombo.value, combo.value);
-    const base = 20;
-    const bonus = base * (1 + (combo.value - 1) * 0.15);
-    score.value += bonus;
+    if (L) {
+      popLantern(L);
+      state.lanterns.splice(bestIdx, 1);
+      combo.value += 1;
+      maxCombo.value = Math.max(maxCombo.value, combo.value);
+      const base = 20;
+      const bonus = base * (1 + (combo.value - 1) * 0.15);
+      score.value += bonus;
+    }
   }
 
   if (!hit) {
